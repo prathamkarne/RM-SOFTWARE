@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Mark Attendance - Select Employee{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="mb-4">Mark Attendance</h2>
+    <p class="lead mb-4">Select an employee to mark or view their attendance:</p>
+
+    <!-- Search Bar -->
+    <div class="mb-4" style="max-width: 450px;">
+        <input type="text" id="employeeSearch" class="form-control"
+               placeholder="Search by name or role (e.g. Chef, Rajesh)">
+    </div>
+
+    {% if employees %}
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush" id="employeeList">
+                {% for emp in employees %}
+                <a href="{{ url_for('attendance.list', employee_id=emp.id) }}"
+                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3 employee-item"
+                   data-name="{{ emp.name | lower }}"
+                   data-role="{{ emp.role.value | lower if emp.role else '' }}">
+                    <div>
+                        <h5 class="mb-1">{{ emp.name }}</h5>
+                        <small class="text-muted">
+                            Role: {{ emp.role.value }} • Phone: {{ emp.phone or 'N/A' }} • Salary: ₹{{ emp.salary|round(2) }}
+                        </small>
+                    </div>
+                    <span class="badge bg-primary rounded-pill px-3 py-2">
+                        <i class="bi bi-arrow-right"></i> Go to Attendance
+                    </span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div id="noResults" class="alert alert-warning text-center mt-3" style="display: none;">
+        No employees match your search.
+    </div>
+
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        <h4>No active employees found</h4>
+        <p>(Resigned employees are hidden automatically)</p>
+        <a href="{{ url_for('employee.list') }}" class="btn btn-primary mt-3">Go to Employees List</a>
+    </div>
+    {% endif %}
+
+    <div class="mt-4">
+        <a href="{{ url_for('employee.list') }}" class="btn btn-secondary">Back to Employees</a>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('employeeSearch');
+    const items = document.querySelectorAll('.employee-item');
+    const noResultsDiv = document.getElementById('noResults');
+
+    function filterEmployees() {
+        const term = searchInput.value.trim().toLowerCase();
+
+        let visibleCount = 0;
+
+        items.forEach(item => {
+            const name = item.getAttribute('data-name') || '';
+            const role = item.getAttribute('data-role') || '';
+
+            if (!term) {
+                item.style.display = '';
+                visibleCount++;
+                return;
+            }
+
+            const nameMatch = name.includes(term);
+            const roleMatch = role.includes(term);
+
+            if (nameMatch || roleMatch) {
+                item.style.display = '';
+                visibleCount++;
+            } else {
+                item.style.display = 'none';
+            }
+        });
+
+        if (visibleCount === 0 && term !== '') {
+            noResultsDiv.style.display = 'block';
+        } else {
+            noResultsDiv.style.display = 'none';
+        }
+    }
+
+    searchInput.addEventListener('input', filterEmployees);
+    filterEmployees();  // Initial call
+});
+</script>
+{% endblock %}

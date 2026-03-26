@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ employee.name }} - Attendance & Salary{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid py-4 text-white" style="background: #0d1117; min-height: 100vh;">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1 fw-bold" style="color: #ffffff;">{{ employee.name }}</h2>
+            <p class="mb-0" style="color: #a3bffa;">
+                {{ employee.role.value }} • Salary: ₹{{ employee.salary|round(0) }}
+            </p>
+        </div>
+        <div>
+            <a href="{{ url_for('attendance.list', employee_id=employee.id) }}"
+               class="btn btn-outline-light btn-sm px-4">
+                Refresh
+            </a>
+        </div>
+    </div>
+
+    <!-- Top Stats Cards – brighter & sharper -->
+    <div class="row g-3 mb-5">
+        <div class="col-md-3 col-sm-6">
+            <div class="card text-center p-4 shadow border-0" style="background: #064e3b; color: #ecfdf5;">
+                <h5 class="mb-2 fw-semibold">Total Presents</h5>
+                <h2 class="mb-0 fw-bold">{{ summary.present }}</h2>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="card text-center p-4 shadow border-0" style="background: #991b1b; color: #fee2e2;">
+                <h5 class="mb-2 fw-semibold">Total Absents</h5>
+                <h2 class="mb-0 fw-bold">{{ summary.absent }}</h2>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="card text-center p-4 shadow border-0" style="background: #92400e; color: #fef3c7;">
+                <h5 class="mb-2 fw-semibold">Total Half Days</h5>
+                <h2 class="mb-0 fw-bold">{{ summary.half }}</h2>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="card text-center p-4 shadow border-0" style="background: #1e40af; color: #dbeafe;">
+                <h5 class="mb-2 fw-semibold">Total Salary</h5>
+                <h2 class="mb-0 fw-bold">₹ {{ summary.calculated_salary | round(0) }}</h2>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calendar Section -->
+    <div class="card bg-dark border-0 shadow-lg mb-5">
+        <div class="card-header bg-gradient-dark border-bottom border-secondary d-flex justify-content-between align-items-center py-3">
+            <h4 class="mb-0 fw-bold" style="color: #ffffff;">Attendance Calendar</h4>
+            <div class="d-flex gap-3 align-items-center">
+                <button class="btn btn-sm btn-outline-secondary">&lt;</button>
+                <h5 class="mb-0 fw-semibold mx-3" style="color: #e2e8f0;">{{ month_name }} {{ year }}</h5>
+                <button class="btn btn-sm btn-outline-secondary">&gt;</button>
+            </div>
+        </div>
+
+        <div class="card-body p-4">
+            <div class="attendance-calendar" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; text-align: center;">
+                <!-- Weekdays -->
+                <div class="fw-bold text-gray-400 py-2">S</div>
+                <div class="fw-bold text-gray-400 py-2">M</div>
+                <div class="fw-bold text-gray-400 py-2">T</div>
+                <div class="fw-bold text-gray-400 py-2">W</div>
+                <div class="fw-bold text-gray-400 py-2">T</div>
+                <div class="fw-bold text-gray-400 py-2">F</div>
+                <div class="fw-bold text-gray-400 py-2">S</div>
+
+                <!-- Days -->
+                {% for day in calendar_days %}
+                    <div class="attendance-day position-relative rounded fw-bold d-flex align-items-center justify-content-center"
+                         style="min-height: 90px; transition: all 0.2s ease;
+                                {% if day.status == 'Present' %}background: #10b981; color: white; box-shadow: 0 0 15px rgba(16,185,129,0.4);{% endif %}
+                                {% if day.status == 'Absent' %}background: #ef4444; color: white; box-shadow: 0 0 15px rgba(239,68,68,0.4);{% endif %}
+                                {% if day.status == 'Half Day' %}background: #f59e0b; color: #1f2937; box-shadow: 0 0 15px rgba(245,158,11,0.4);{% endif %}
+                                {% if not day.status and not day.is_padding %}background: #1f2937; color: #9ca3af;{% endif %}
+                                {% if day.is_padding %}background: transparent; color: transparent;{% endif %}">
+
+                        {% if day.number %}
+                            <div class="fs-4 fw-bold">{{ day.number }}</div>
+
+                            {% if day.status %}
+                                <!-- Large centered status icon for marked days -->
+                                <div class="position-absolute top-50 start-50 translate-middle fs-2 fw-black opacity-95">
+                                    {% if day.status == 'Present' %}✓{% elif day.status == 'Absent' %}✗{% elif day.status == 'Half Day' %}½{% endif %}
+                                </div>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card-footer bg-dark border-0 text-center py-3">
+            <div class="d-flex justify-content-center gap-5 fw-medium">
+                <div><span style="color: #10b981;">✓ Present</span></div>
+                <div><span style="color: #ef4444;">✗ Absent</span></div>
+                <div><span style="color: #f59e0b;">½ Half Day</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions – brighter buttons -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <a href="#markAttendanceModal" data-bs-toggle="modal"
+               class="btn btn-outline-light w-100 py-3 fw-semibold shadow-sm">
+                Mark Today's Attendance
+            </a>
+        </div>
+        <div class="col-md-4">
+            <button class="btn btn-warning w-100 py-3 fw-semibold shadow-sm"
+                    data-bs-toggle="collapse" data-bs-target="#advanceForm">
+                Give Advance / Debt
+            </button>
+        </div>
+        <div class="col-md-4">
+            {% if not existing_payment %}
+            <form method="POST">
+                <button type="submit" name="mark_paid" value="1"
+                        class="btn btn-success w-100 py-3 fw-semibold shadow-sm">
+                    Pay This Month Salary
+                </button>
+            </form>
+            {% else %}
+            <button class="btn btn-success w-100 py-3 fw-semibold shadow-sm" disabled>
+                Already Paid This Month
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Advance Form -->
+    <div class="collapse mt-4" id="advanceForm">
+        <div class="card bg-dark border-0 shadow">
+            <div class="card-body">
+                <h5 class="mb-3 fw-bold" style="color: #ffffff;">Add Advance / Debt</h5>
+                <form method="POST">
+                    <input type="hidden" name="add_debt" value="1">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <input type="number" name="debt_amount" class="form-control bg-dark text-white border-secondary"
+                                   placeholder="Amount" required>
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" name="reason" class="form-control bg-dark text-white border-secondary"
+                                   placeholder="Reason (optional)">
+                        </div>
+                        <div class="col-md-3">
+                            <button type="submit" class="btn btn-warning w-100 fw-semibold">Add</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Modal – brighter buttons -->
+<div class="modal fade" id="markAttendanceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title fw-bold">Mark Attendance - {{ today.strftime('%d %b %Y') }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="mark_attendance" value="1">
+                    <input type="hidden" name="date" value="{{ today.isoformat() }}">
+                    <div class="d-grid gap-3">
+                        <button type="submit" name="status" value="Present"
+                                class="btn btn-success btn-lg fw-bold shadow">Present ✓</button>
+                        <button type="submit" name="status" value="Absent"
+                                class="btn btn-danger btn-lg fw-bold shadow">Absent ✗</button>
+                        <button type="submit" name="status" value="Half Day"
+                                class="btn btn-warning btn-lg fw-bold shadow">Half Day ½</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

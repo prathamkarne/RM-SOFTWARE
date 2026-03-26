@@ -1,0 +1,318 @@
+{% extends 'base.html' %}
+{% block title %}Edit Order #{{ order.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>✏️ Edit Order #{{ order.id }}</h2>
+        <a href="{{ url_for('order.list') }}" class="btn btn-outline-secondary">Back to Orders</a>
+    </div>
+
+    <div class="alert alert-info">
+        <strong>Current Status:</strong> {{ order.status }}<br>
+        <strong>Total Edits so far:</strong> {{ order.edit_count }}
+    </div>
+
+    <!-- 1. Original Items -->
+    <h4 class="mt-4 mb-3">1. Original Items (first order)</h4>
+    <div class="table-responsive mb-5">
+        <table class="table table-bordered table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in original_items %}
+                <tr>
+                    <td>{{ item.menu_item.name }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>₹{{ item.price_at_time }}</td>
+                    <td>₹{{ (item.quantity * item.price_at_time)|round(2) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center">No original items</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 2. Previously Added (from old edits) -->
+    <h4 class="mt-4 mb-3">2. Items Added in Previous Edits</h4>
+    <div class="table-responsive mb-5">
+        <table class="table table-bordered table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Subtotal</th>
+                    <th>Added in Edit #</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in added_items %}
+                <tr>
+                    <td>{{ item.menu_item.name }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>₹{{ item.price_at_time }}</td>
+                    <td>₹{{ (item.quantity * item.price_at_time)|round(2) }}</td>
+                    <td><span class="badge bg-secondary">Edit {{ item.added_after_edit }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-center">No previously added items</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 3. Add More Items (this edit) -->
+    <h4 class="mt-5 mb-3">3. Add More Items (this edit – Edit #{{ order.edit_count + 1 }})</h4>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <label class="form-label fw-bold">Category</label>
+            <select id="categorySelect" class="form-select">
+                <option value="">-- All Categories --</option>
+                {% for category in categories %}
+                    {% if category.items|selectattr('available', 'equalto', True)|list %}
+                        <option value="{{ category.id }}">{{ category.name }}</option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label fw-bold">Search Item</label>
+            <input type="text" id="itemSearch" class="form-control" placeholder="Search menu items...">
+        </div>
+    </div>
+
+    <div id="itemsContainer" style="display:none;" class="mb-4">
+        <h6 class="text-primary mb-3">Available Items</h6>
+        <div id="itemsList" class="row g-3"></div>
+    </div>
+
+    <div id="noItemsMsg" class="alert alert-info text-center" style="display:none;">
+        No matching items found.
+    </div>
+
+    <!-- Live preview: what you're adding RIGHT NOW in this edit -->
+    <h5 class="mt-4 mb-3 text-success">Items you're adding in this edit:</h5>
+    <div class="table-responsive mb-4">
+        <table class="table table-bordered table-sm" id="currentEditTable" style="display:none;">
+            <thead class="table-success">
+                <tr>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Subtotal</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div id="noCurrentItems" class="text-muted text-center" style="display:block;">
+            No items added yet in this edit
+        </div>
+    </div>
+
+    <form method="POST" id="editForm">
+        <div id="hiddenInputs"></div>
+
+        <div class="text-end mt-4">
+            <button type="submit" class="btn btn-primary btn-lg px-5">Save Changes</button>
+            <a href="{{ url_for('order.list') }}" class="btn btn-outline-secondary btn-lg px-5 ms-3">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script type="text/javascript">
+    const menuData = {
+        {% for category in categories %}
+            "{{ category.id }}": [
+                {% for item in category.items if item.available %}
+                    {
+                        id: {{ item.id }},
+                        name: "{{ item.name | e }}",
+                        price: {{ item.price }}
+                    },
+                {% endfor %}
+            ],
+        {% endfor %}
+    };
+
+    const allItems = [];
+    Object.values(menuData).forEach(cat => cat.forEach(item => allItems.push(item)));
+
+    // DOM elements
+    const categorySelect = document.getElementById('categorySelect');
+    const itemSearch    = document.getElementById('itemSearch');
+    const itemsList     = document.getElementById('itemsList');
+    const noItemsMsg    = document.getElementById('noItemsMsg');
+    const itemsContainer= document.getElementById('itemsContainer');
+
+    const currentEditTable = document.getElementById('currentEditTable');
+    const currentEditTbody = currentEditTable.querySelector('tbody');
+    const noCurrentItems   = document.getElementById('noCurrentItems');
+    const hiddenInputs     = document.getElementById('hiddenInputs');
+
+    // What we are adding RIGHT NOW in this edit session
+    let currentEditItems = {};   // { itemId: {name, price, qty} }
+
+    function renderAvailableItems(items) {
+        itemsList.innerHTML = '';
+        if (items.length === 0) {
+            noItemsMsg.style.display = 'block';
+            itemsContainer.style.display = 'block';
+            return;
+        }
+        noItemsMsg.style.display = 'none';
+        itemsContainer.style.display = 'block';
+
+        items.forEach(item => {
+            const col = document.createElement('div');
+            col.className = 'col-md-6 col-lg-4';
+            col.innerHTML = `
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body d-flex flex-column">
+                        <h6 class="card-title mb-1">${item.name}</h6>
+                        <p class="text-success fw-bold mb-3">₹${item.price.toFixed(2)}</p>
+                        <div class="mt-auto d-flex align-items-center gap-2">
+                            <input type="number" min="0" value="0" class="form-control qty-input" style="width:90px;"
+                                   data-id="${item.id}" data-name="${item.name.replace(/"/g,'&quot;')}" data-price="${item.price}">
+                            <button type="button" class="btn btn-sm btn-primary add-btn flex-grow-1"
+                                    data-id="${item.id}">Add</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            itemsList.appendChild(col);
+        });
+
+        // Listeners
+        document.querySelectorAll('.add-btn').forEach(btn => btn.addEventListener('click', handleAddThisEdit));
+        document.querySelectorAll('.qty-input').forEach(inp => {
+            inp.addEventListener('change', function() {
+                if (parseInt(this.value) > 0) {
+                    this.closest('.card-body').querySelector('.add-btn').click();
+                    this.value = 0;
+                }
+            });
+        });
+    }
+
+    function filterItems() {
+        const catId = categorySelect.value;
+        const term  = itemSearch.value.trim().toLowerCase();
+
+        let filtered = [];
+
+        if (catId && term) {
+            filtered = menuData[catId].filter(i => i.name.toLowerCase().includes(term));
+        } else if (catId) {
+            filtered = [...menuData[catId]];
+        } else if (term) {
+            filtered = allItems.filter(i => i.name.toLowerCase().includes(term));
+        } else {
+            itemsList.innerHTML = '';
+            itemsContainer.style.display = 'none';
+            noItemsMsg.style.display = 'none';
+            return;
+        }
+
+        renderAvailableItems(filtered);
+    }
+
+    categorySelect.addEventListener('change', filterItems);
+    itemSearch.addEventListener('input', filterItems);
+
+    // ────────────────────────────────────────────────
+    //     Handle adding item to THIS edit session
+    // ────────────────────────────────────────────────
+    function handleAddThisEdit(e) {
+        const btn = e.target;
+        const id   = btn.dataset.id;
+        const input = btn.closest('.card-body').querySelector('.qty-input');
+        let qty = parseInt(input.value) || 1;
+
+        if (qty <= 0) return;
+
+        if (!currentEditItems[id]) {
+            currentEditItems[id] = {
+                name: input.dataset.name,
+                price: parseFloat(input.dataset.price),
+                qty: 0
+            };
+        }
+
+        currentEditItems[id].qty += qty;
+        input.value = 0;
+
+        updateCurrentEditPreview();
+        updateHiddenFormInputs();
+    }
+
+    function updateCurrentEditPreview() {
+        currentEditTbody.innerHTML = '';
+
+        let hasItems = false;
+        let totalThisEdit = 0;
+
+        for (const id in currentEditItems) {
+            const it = currentEditItems[id];
+            if (it.qty <= 0) continue;
+            hasItems = true;
+
+            const sub = it.qty * it.price;
+            totalThisEdit += sub;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${it.name}</td>
+                <td>${it.qty}</td>
+                <td>₹${it.price.toFixed(2)}</td>
+                <td>₹${sub.toFixed(2)}</td>
+                <td><button type="button" class="btn btn-sm btn-danger remove-this-edit" data-id="${id}">×</button></td>
+            `;
+            currentEditTbody.appendChild(tr);
+        }
+
+        currentEditTable.style.display = hasItems ? 'table' : 'none';
+        noCurrentItems.style.display  = hasItems ? 'none' : 'block';
+
+        // Optional: show total this edit
+        if (hasItems) {
+            const tfoot = currentEditTable.querySelector('tfoot') || document.createElement('tfoot');
+            tfoot.innerHTML = `<tr><td colspan="3" class="text-end fw-bold">Total this edit:</td><td class="fw-bold">₹${totalThisEdit.toFixed(2)}</td><td></td></tr>`;
+            if (!currentEditTable.querySelector('tfoot')) currentEditTable.appendChild(tfoot);
+        }
+    }
+
+    function updateHiddenFormInputs() {
+        hiddenInputs.innerHTML = '';
+        for (const id in currentEditItems) {
+            const qty = currentEditItems[id].qty;
+            if (qty > 0) {
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = `qty_${id}`;
+                inp.value = qty;
+                hiddenInputs.appendChild(inp);
+            }
+        }
+    }
+
+    // Remove from current edit
+    document.addEventListener('click', e => {
+        if (e.target.classList.contains('remove-this-edit')) {
+            const id = e.target.dataset.id;
+            delete currentEditItems[id];
+            updateCurrentEditPreview();
+            updateHiddenFormInputs();
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,288 @@
+{% extends 'base.html' %}
+
+{% block title %}New Order{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="mb-4">🛒 Place New Order</h2>
+
+    <form method="POST" id="orderForm">
+        <div class="row g-4">
+            <!-- Left Column - Order Details -->
+            <div class="col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Order Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Order Type</label>
+                            <select name="order_type" id="orderType" class="form-select" required>
+                                <option value="">Select Type</option>
+                                <option value="Dine-in">🍽️ Dine-in</option>
+                                <option value="Parcel">📦 Parcel / Takeaway</option>
+                            </select>
+                        </div>
+
+                        <!-- Table Number - only for Dine-in -->
+                        <div id="tableField" class="mb-4" style="display: none;">
+                            <label class="form-label fw-bold">Table Number</label>
+                            <input type="text" name="table_number" class="form-control"
+                                   placeholder="e.g. T-05, Table 7, Booth 3"
+                                   maxlength="20">
+                        </div>
+
+                        <!-- Customer Name - only for Parcel -->
+                        <div id="customerField" class="mb-4" style="display: none;">
+                            <label class="form-label fw-bold">Customer Name</label>
+                            <input type="text" name="customer_name" class="form-control"
+                                   placeholder="e.g. Rahul Sharma, Priya Ji"
+                                   maxlength="100">
+                        </div>
+
+                        <div class="pt-3 border-top">
+                            <h5>Total: <span id="totalAmount">₹0.00</span></h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column - Menu Selection -->
+            <div class="col-lg-8">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">🍴 Select Items</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Category</label>
+                                <select id="categorySelect" class="form-select">
+                                    <option value="">-- All Categories --</option>
+                                    {% for category in categories %}
+                                        {% if category.items|selectattr('available', 'equalto', True)|list|length > 0 %}
+                                            <option value="{{ category.id }}">{{ category.name }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Search Item</label>
+                                <input type="text" id="itemSearch" class="form-control" placeholder="Type item name...">
+                            </div>
+                        </div>
+
+                        <div id="itemsContainer" style="display:none;">
+                            <h6 class="text-primary mb-3">Available Items</h6>
+                            <div id="itemsList" class="row g-3"></div>
+                        </div>
+
+                        <div id="noItemsMsg" class="alert alert-info text-center" style="display:none;">
+                            No matching items found.
+                        </div>
+
+                        <div id="selectedItems" class="mt-5">
+                            <h6 class="fw-bold">Selected Items:</h6>
+                            <table class="table table-sm table-bordered" id="selectedTable" style="display:none;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Price</th>
+                                        <th>Qty</th>
+                                        <th>Subtotal</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card-footer text-end">
+                        <button type="submit" class="btn btn-success btn-lg px-5" id="placeOrderBtn" disabled>
+                            ✅ Place Order
+                        </button>
+                        <a href="{{ url_for('order.list') }}" class="btn btn-outline-secondary btn-lg px-5 ms-2">
+                            Cancel
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Menu Data & JavaScript -->
+<script type="text/javascript">
+    const menuData = {
+        {% for category in categories %}
+            "{{ category.id }}": [
+                {% for item in category.items if item.available %}
+                    {
+                        id: {{ item.id }},
+                        name: "{{ item.name | e }}",
+                        price: {{ item.price }},
+                        category: "{{ category.name | e }}"
+                    },
+                {% endfor %}
+            ],
+        {% endfor %}
+    };
+
+    // All items flattened for global search
+    const allItems = [];
+    Object.values(menuData).forEach(catItems => {
+        catItems.forEach(item => allItems.push(item));
+    });
+
+    // Show/hide table & customer fields
+    document.getElementById('orderType').addEventListener('change', function() {
+        const type = this.value;
+        document.getElementById('tableField').style.display = type === 'Dine-in' ? 'block' : 'none';
+        document.getElementById('customerField').style.display = type === 'Parcel' ? 'block' : 'none';
+
+        // Optional: clear values when switching
+        if (type !== 'Dine-in') document.querySelector('[name="table_number"]').value = '';
+        if (type !== 'Parcel') document.querySelector('[name="customer_name"]').value = '';
+    });
+
+    const categorySelect = document.getElementById('categorySelect');
+    const itemSearch = document.getElementById('itemSearch');
+    const itemsList = document.getElementById('itemsList');
+    const noItemsMsg = document.getElementById('noItemsMsg');
+    const itemsContainer = document.getElementById('itemsContainer');
+
+    function renderItems(items) {
+        itemsList.innerHTML = '';
+        if (items.length === 0) {
+            noItemsMsg.style.display = 'block';
+            itemsContainer.style.display = 'block';
+            return;
+        }
+
+        noItemsMsg.style.display = 'none';
+        itemsContainer.style.display = 'block';
+
+        items.forEach(item => {
+            const col = document.createElement('div');
+            col.className = 'col-md-6 col-lg-4';
+            col.innerHTML = `
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <h6 class="card-title mb-1">${item.name}</h6>
+                        <p class="text-success fw-bold mb-2">₹${item.price.toFixed(2)}</p>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="number" min="0" value="0" class="form-control qty-input" style="width:80px;"
+                                   data-item-id="${item.id}" data-price="${item.price}" data-name="${item.name.replace(/"/g, '&quot;')}">
+                            <button type="button" class="btn btn-sm btn-primary add-btn flex-grow-1"
+                                    data-item-id="${item.id}"
+                                    data-name="${item.name.replace(/"/g, '&quot;')}"
+                                    data-price="${item.price}">Add</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            itemsList.appendChild(col);
+        });
+
+        // Event listeners
+        document.querySelectorAll('.add-btn').forEach(btn => btn.addEventListener('click', addToOrder));
+        document.querySelectorAll('.qty-input').forEach(input => {
+            input.addEventListener('change', function() {
+                if (parseInt(this.value) > 0) {
+                    this.closest('.card-body').querySelector('.add-btn').click();
+                    this.value = 0;
+                }
+            });
+        });
+    }
+
+    function filterAndRender() {
+        const catId = categorySelect.value;
+        const searchTerm = itemSearch.value.trim().toLowerCase();
+
+        let filtered = [];
+
+        if (catId && searchTerm) {
+            filtered = menuData[catId].filter(item =>
+                item.name.toLowerCase().includes(searchTerm)
+            );
+        } else if (catId) {
+            filtered = menuData[catId];
+        } else if (searchTerm) {
+            filtered = allItems.filter(item =>
+                item.name.toLowerCase().includes(searchTerm)
+            );
+        } else {
+            itemsList.innerHTML = '';
+            itemsContainer.style.display = 'none';
+            noItemsMsg.style.display = 'none';
+            return;
+        }
+
+        renderItems(filtered);
+    }
+
+    categorySelect.addEventListener('change', filterAndRender);
+    itemSearch.addEventListener('input', filterAndRender);
+
+    // Selected items logic
+    const selectedItems = {};
+
+    function addToOrder(e) {
+        const btn = e.target;
+        const itemId = btn.dataset.itemId;
+        const name = btn.dataset.name;
+        const price = parseFloat(btn.dataset.price);
+        const qtyInput = btn.closest('.card-body').querySelector('.qty-input');
+        let qty = parseInt(qtyInput.value) || 1;
+
+        if (qty <= 0) return;
+
+        if (selectedItems[itemId]) {
+            selectedItems[itemId].qty += qty;
+        } else {
+            selectedItems[itemId] = { name, price, qty };
+        }
+
+        qtyInput.value = 0;
+        updateSelectedTable();
+    }
+
+    function updateSelectedTable() {
+        const tbody = document.querySelector('#selectedTable tbody');
+        tbody.innerHTML = '';
+        let total = 0;
+
+        for (const id in selectedItems) {
+            const item = selectedItems[id];
+            const subtotal = item.qty * item.price;
+            total += subtotal;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.name}<input type="hidden" name="qty_${id}" value="${item.qty}"></td>
+                <td>₹${item.price.toFixed(2)}</td>
+                <td>${item.qty}</td>
+                <td>₹${subtotal.toFixed(2)}</td>
+                <td><button type="button" class="btn btn-sm btn-danger remove-btn" data-id="${id}">×</button></td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        document.getElementById('totalAmount').textContent = '₹' + total.toFixed(2);
+        document.getElementById('selectedTable').style.display =
+            Object.keys(selectedItems).length > 0 ? 'table' : 'none';
+        document.getElementById('placeOrderBtn').disabled =
+            Object.keys(selectedItems).length === 0;
+    }
+
+    // Remove item handler
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-btn')) {
+            delete selectedItems[e.target.dataset.id];
+            updateSelectedTable();
+        }
+    });
+</script>
+{% endblock %}

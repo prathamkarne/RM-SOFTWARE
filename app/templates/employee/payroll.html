@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>{{ employee.name }} Payroll</h2>
+
+<div>
+    <h3>Salary Summary</h3>
+    <p>Fixed Salary : ₹ {{ employee.salary }}</p>
+    <p>Pending Debt : ₹ {{ total_pending }}</p>
+    <p>Net Payable : ₹ {{ employee.salary - total_pending }}</p>
+</div>
+
+<hr>
+
+<h3>Give Advance</h3>
+<form method="POST">
+    <input name="amount" placeholder="Amount" required>
+    <select name="mode">
+        <option value="Cash">Cash</option>
+        <option value="Online">Online</option>
+    </select>
+    <input name="reason" placeholder="Reason">
+    <button name="give_advance">Give</button>
+</form>
+
+<hr>
+
+<h3>Pay Salary</h3>
+<form method="POST">
+    <input name="clear_amount" placeholder="Debt Clear Amount">
+    <button name="pay_salary">Pay Salary</button>
+</form>
+
+<hr>
+
+<h3>Payment History</h3>
+
+<table border="1">
+<tr>
+<th>Month</th>
+<th>Net Paid</th>
+</tr>
+
+{% for p in payments %}
+<tr>
+<td>{{ p.salary_month }}</td>
+<td>{{ p.net_paid }}</td>
+</tr>
+{% endfor %}
+
+</table>
+
+{% endblock %}
